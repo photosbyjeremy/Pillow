@@ -594,10 +594,10 @@ class Image(object):
         :ref:`file-handling` for more information.
         """
         try:
-            self.fp.close()
-            self.fp = None
             if hasattr(self, "_close__fp"):
                 self._close__fp()
+            self.fp.close()
+            self.fp = None
         except Exception as msg:
             logger.debug("Error closing: %s", msg)
 
@@ -611,12 +611,12 @@ class Image(object):
 
     if sys.version_info.major >= 3:
         def __del__(self):
+            if hasattr(self, "_close__fp"):
+                self._close__fp()
             if (hasattr(self, 'fp') and hasattr(self, '_exclusive_fp')
                and self.fp and self._exclusive_fp):
                 self.fp.close()
             self.fp = None
-            if hasattr(self, "_close__fp"):
-                self._close__fp()
 
     def _copy(self):
         self.load()
@@ -655,8 +655,7 @@ class Image(object):
         return filename
 
     def __eq__(self, other):
-        return (isinstance(other, Image) and
-                self.__class__.__name__ == other.__class__.__name__ and
+        return (self.__class__ is other.__class__ and
                 self.mode == other.mode and
                 self.size == other.size and
                 self.info == other.info and
@@ -881,7 +880,7 @@ class Image(object):
         "L", "RGB" and "CMYK." The **matrix** argument only supports "L"
         and "RGB".
 
-        When translating a color image to black and white (mode "L"),
+        When translating a color image to greyscale (mode "L"),
         the library uses the ITU-R 601-2 luma transform::
 
             L = R * 299/1000 + G * 587/1000 + B * 114/1000
@@ -958,7 +957,7 @@ class Image(object):
                 # color to an alpha channel.
                 new_im = self._new(self.im.convert_transparent(
                     mode, self.info['transparency']))
-                del(new_im.info['transparency'])
+                del new_im.info['transparency']
                 return new_im
             elif self.mode in ('L', 'RGB', 'P') and mode in ('L', 'RGB', 'P'):
                 t = self.info['transparency']
@@ -1010,14 +1009,14 @@ class Image(object):
             if delete_trns:
                 # This could possibly happen if we requantize to fewer colors.
                 # The transparency would be totally off in that case.
-                del(new.info['transparency'])
+                del new.info['transparency']
             if trns is not None:
                 try:
                     new.info['transparency'] = new.palette.getcolor(trns)
                 except Exception:
                     # if we can't make a transparent color, don't leave the old
                     # transparency hanging around to mess us up.
-                    del(new.info['transparency'])
+                    del new.info['transparency']
                     warnings.warn("Couldn't allocate palette entry " +
                                   "for transparency")
             return new
@@ -1039,13 +1038,13 @@ class Image(object):
         new_im = self._new(im)
         if delete_trns:
             # crash fail if we leave a bytes transparency in an rgb/l mode.
-            del(new_im.info['transparency'])
+            del new_im.info['transparency']
         if trns is not None:
             if new_im.mode == 'P':
                 try:
                     new_im.info['transparency'] = new_im.palette.getcolor(trns)
                 except Exception:
-                    del(new_im.info['transparency'])
+                    del new_im.info['transparency']
                     warnings.warn("Couldn't allocate palette entry " +
                                   "for transparency")
             else:
@@ -1651,7 +1650,8 @@ class Image(object):
         """
         Modifies the pixel at the given position. The color is given as
         a single numerical value for single-band images, and a tuple for
-        multi-band images.
+        multi-band images. In addition to this, RGB and RGBA tuples are
+        accepted for P images.
 
         Note that this method is relatively slow.  For more extensive changes,
         use :py:meth:`~PIL.Image.Image.paste` or the :py:mod:`~PIL.ImageDraw`
@@ -1674,6 +1674,11 @@ class Image(object):
 
         if self.pyaccess:
             return self.pyaccess.putpixel(xy, value)
+
+        if self.mode == "P" and \
+           isinstance(value, (list, tuple)) and len(value) in [3, 4]:
+            # RGB or RGBA value for a P image
+            value = self.palette.getcolor(value)
         return self.im.putpixel(xy, value)
 
     def remap_palette(self, dest_map, source_palette=None):
@@ -2657,7 +2662,7 @@ def open(fp, mode="r"):
                 # opening failures that are entirely expected.
                 # logger.debug("", exc_info=True)
                 continue
-            except Exception:
+            except BaseException:
                 if exclusive_fp:
                     fp.close()
                 raise

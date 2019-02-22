@@ -54,6 +54,7 @@ import os
 import struct
 import sys
 import warnings
+import distutils.version
 
 from .TiffTags import TYPES
 
@@ -65,6 +66,8 @@ except ImportError:
     from collections import MutableMapping
 
 
+# __version__ is deprecated and will be removed in a future version. Use
+# PIL.__version__ instead.
 __version__ = "1.3.5"
 DEBUG = False  # Needs to be merged with the new logging approach.
 
@@ -132,6 +135,9 @@ COMPRESSION_INFO = {
     32946: "tiff_deflate",
     34676: "tiff_sgilog",
     34677: "tiff_sgilog24",
+    34925: "lzma",
+    50000: "zstd",
+    50001: "webp",
 }
 
 COMPRESSION_INFO_REV = {v: k for k, v in COMPRESSION_INFO.items()}
@@ -284,6 +290,10 @@ def _limit_rational(val, max_val):
     return n_d[::-1] if inv else n_d
 
 
+def _libtiff_version():
+    return Image.core.libtiff_version.split("\n")[0].split("Version ")[1]
+
+
 ##
 # Wrapper for TIFF IFDs.
 
@@ -416,7 +426,7 @@ class ImageFileDirectory_v2(MutableMapping):
 
         ifd = ImageFileDirectory_v2()
         ifd[key] = 'Some Data'
-        ifd.tagtype[key] = 2
+        ifd.tagtype[key] = TiffTags.ASCII
         print(ifd[key])
         'Some Data'
 
@@ -550,28 +560,28 @@ class ImageFileDirectory_v2(MutableMapping):
             if info.type:
                 self.tagtype[tag] = info.type
             else:
-                self.tagtype[tag] = 7
+                self.tagtype[tag] = TiffTags.UNDEFINED
                 if all(isinstance(v, IFDRational) for v in values):
-                    self.tagtype[tag] = 5
+                    self.tagtype[tag] = TiffTags.RATIONAL
                 elif all(isinstance(v, int) for v in values):
                     if all(v < 2 ** 16 for v in values):
-                        self.tagtype[tag] = 3
+                        self.tagtype[tag] = TiffTags.SHORT
                     else:
-                        self.tagtype[tag] = 4
+                        self.tagtype[tag] = TiffTags.LONG
                 elif all(isinstance(v, float) for v in values):
-                    self.tagtype[tag] = 12
+                    self.tagtype[tag] = TiffTags.DOUBLE
                 else:
                     if py3:
                         if all(isinstance(v, str) for v in values):
-                            self.tagtype[tag] = 2
+                            self.tagtype[tag] = TiffTags.ASCII
                     else:
                         # Never treat data as binary by default on Python 2.
-                        self.tagtype[tag] = 2
+                        self.tagtype[tag] = TiffTags.ASCII
 
-        if self.tagtype[tag] == 7 and py3:
+        if self.tagtype[tag] == TiffTags.UNDEFINED and py3:
             values = [value.encode("ascii", 'replace') if isinstance(
                       value, str) else value]
-        elif self.tagtype[tag] == 5:
+        elif self.tagtype[tag] == TiffTags.RATIONAL:
             values = [float(v) if isinstance(v, int) else v
                       for v in values]
 
@@ -587,7 +597,10 @@ class ImageFileDirectory_v2(MutableMapping):
         if (info.length == 1) or \
            (info.length is None and len(values) == 1 and not legacy_api):
             # Don't mess with the legacy api, since it's frozen.
-            if legacy_api and self.tagtype[tag] in [5, 10]:  # rationals
+            if legacy_api and self.tagtype[tag] in [
+                TiffTags.RATIONAL,
+                TiffTags.SIGNED_RATIONAL
+            ]:  # rationals
                 values = values,
             try:
                 dest[tag], = values
@@ -644,13 +657,13 @@ class ImageFileDirectory_v2(MutableMapping):
             b"".join(self._pack(fmt, value) for value in values))
 
     list(map(_register_basic,
-             [(3, "H", "short"),
-              (4, "L", "long"),
-              (6, "b", "signed byte"),
-              (8, "h", "signed short"),
-              (9, "l", "signed long"),
-              (11, "f", "float"),
-              (12, "d", "double")]))
+             [(TiffTags.SHORT, "H", "short"),
+              (TiffTags.LONG, "L", "long"),
+              (TiffTags.SIGNED_BYTE, "b", "signed byte"),
+              (TiffTags.SIGNED_SHORT, "h", "signed short"),
+              (TiffTags.SIGNED_LONG, "l", "signed long"),
+              (TiffTags.FLOAT, "f", "float"),
+              (TiffTags.DOUBLE, "d", "double")]))
 
     @_register_loader(1, 1)  # Basic type, except for the legacy API.
     def load_byte(self, data, legacy_api=True):
@@ -806,7 +819,10 @@ class ImageFileDirectory_v2(MutableMapping):
                     print("- value:", values)
 
             # count is sum of lengths for string and arbitrary data
-            count = len(data) if typ in [2, 7] else len(values)
+            if typ in [TiffTags.ASCII, TiffTags.UNDEFINED]:
+                count = len(data)
+            else:
+                count = len(values)
             # figure out if data fits into the entry
             if len(data) <= 4:
                 entries.append((tag, typ, count, data.ljust(4, b"\0"), b""))
@@ -859,7 +875,7 @@ class ImageFileDirectory_v1(ImageFileDirectory_v2):
 
         ifd = ImageFileDirectory_v1()
         ifd[key] = 'Some Data'
-        ifd.tagtype[key] = 2
+        ifd.tagtype[key] = TiffTags.ASCII
         print(ifd[key])
         ('Some Data',)
 
@@ -952,7 +968,7 @@ class TiffImageFile(ImageFile.ImageFile):
     _close_exclusive_fp_after_loading = False
 
     def _open(self):
-        "Open the first image in a TIFF file"
+        """Open the first image in a TIFF file"""
 
         # Header
         ifh = self.fp.read(8)
@@ -1009,7 +1025,7 @@ class TiffImageFile(ImageFile.ImageFile):
         return self._is_animated
 
     def seek(self, frame):
-        "Select a given frame as current image"
+        """Select a given frame as current image"""
         if not self._seek_check(frame):
             return
         self._seek(frame)
@@ -1047,7 +1063,7 @@ class TiffImageFile(ImageFile.ImageFile):
         self._setup()
 
     def tell(self):
-        "Return the current frame number"
+        """Return the current frame number"""
         return self.__frame
 
     @property
@@ -1162,7 +1178,7 @@ class TiffImageFile(ImageFile.ImageFile):
         return Image.Image.load(self)
 
     def _setup(self):
-        "Setup this image object based on current tags"
+        """Setup this image object based on current tags"""
 
         if 0xBC01 in self.tag_v2:
             raise IOError("Windows Media Photo files not yet supported")
@@ -1350,7 +1366,8 @@ class TiffImageFile(ImageFile.ImageFile):
 
     def _close__fp(self):
         try:
-            self.__fp.close()
+            if self.__fp != self.fp:
+                self.__fp.close()
         except AttributeError:
             pass
         finally:
@@ -1422,7 +1439,7 @@ def _save(im, fp, filename):
         try:
             ifd.tagtype[key] = info.tagtype[key]
         except Exception:
-            pass  # might not be an IFD, Might not have populated type
+            pass  # might not be an IFD. Might not have populated type
 
     # additions written by Greg Couch, gregc@cgl.ucsf.edu
     # inspired by image-sig posting from Kevin Cazabon, kcazabon@home.com
@@ -1508,12 +1525,17 @@ def _save(im, fp, filename):
                                           getattr(im, 'tag_v2', {}).items(),
                                           legacy_ifd.items()):
             # Libtiff can only process certain core items without adding
-            # them to the custom dictionary. It will segfault if it attempts
-            # to add a custom tag without the dictionary entry
-            #
-            # UNDONE --  add code for the custom dictionary
+            # them to the custom dictionary.
+            # Support for custom items has only been been added
+            # for int, float, unicode, string and byte values
             if tag not in TiffTags.LIBTIFF_CORE:
-                continue
+                if TiffTags.lookup(tag).type == TiffTags.UNDEFINED:
+                    continue
+                if (distutils.version.StrictVersion(_libtiff_version()) <
+                    distutils.version.StrictVersion("4.0")) \
+                   or not (isinstance(value, (int, float, str, bytes)) or
+                           (not py3 and isinstance(value, unicode))):  # noqa: F821
+                    continue
             if tag not in atts and tag not in blocklist:
                 if isinstance(value, str if py3 else unicode):  # noqa: F821
                     atts[tag] = value.encode('ascii', 'replace') + b"\0"
@@ -1793,7 +1815,7 @@ class AppendingTiffWriter:
                 # local (not referenced with another offset)
                 self.rewriteLastShortToLong(offset)
                 self.f.seek(-10, os.SEEK_CUR)
-                self.writeShort(4)  # rewrite the type to LONG
+                self.writeShort(TiffTags.LONG)  # rewrite the type to LONG
                 self.f.seek(8, os.SEEK_CUR)
             elif isShort:
                 self.rewriteLastShort(offset)

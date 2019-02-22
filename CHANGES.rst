@@ -2,8 +2,116 @@
 Changelog (Pillow)
 ==================
 
-5.4.0 (unreleased)
+6.0.0 (unreleased)
 ------------------
+
+- Deprecate support for PyQt4 and PySide #3655
+  [hugovk, radarhere]
+
+- Add TIFF compression codecs: LZMA, Zstd, WebP #3555
+  [cgohlke]
+
+- Fixed pickling of iTXt class with protocol > 1 #3537
+  [radarhere]
+
+- _util.isPath returns True for pathlib.Path objects #3616
+  [wbadart]
+
+- Remove unnecessary unittest.main() boilerplate from test files #3631
+  [jdufresne]
+
+- Exif: Seek to IFD offset #3584
+  [radarhere]
+
+- Deprecate PIL.*ImagePlugin.__version__ attributes #3628
+  [jdufresne]
+
+- Docs: Add note about ImageDraw operations that exceed image bounds #3620
+  [radarhere]
+
+- Allow for unknown PNG chunks after image data #3558
+  [radarhere]
+
+- Changed EPS subprocess stdin from devnull to None #3611
+  [radarhere]
+
+- Fix possible integer overflow #3609
+  [cgohlke]
+
+- Catch BaseException for resource cleanup handlers #3574
+  [jdufresne]
+
+- Improve pytest configuration to allow specific tests as CLI args #3579
+  [jdufresne]
+
+- Drop support for Python 3.4 #3596
+  [hugovk]
+
+- Remove deprecated PIL.OleFileIO #3598
+  [hugovk]
+
+- Remove deprecated ImageOps undocumented functions #3599
+  [hugovk]
+
+- Depends: Update libwebp to 1.0.2 #3602
+  [radarhere]
+
+- Detect MIME types #3525
+  [radarhere]
+
+5.4.1 (2019-01-06)
+------------------
+
+- File closing: Only close __fp if not fp #3540
+  [radarhere]
+
+- Fix build for Termux #3529
+  [pslacerda]
+
+- PNG: Detect MIME types #3525
+  [radarhere]
+
+- PNG: Handle IDAT chunks after image end #3532
+  [radarhere]
+
+5.4.0 (2019-01-01)
+------------------
+
+- Docs: Improved ImageChops documentation #3522
+  [radarhere]
+
+- Allow RGB and RGBA values for P image putpixel #3519
+  [radarhere]
+
+- Add APNG extension to PNG plugin #3501
+  [pirate486743186, radarhere]
+
+- Lookup ld.so.cache instead of hardcoding search paths #3245
+  [pslacerda]
+
+- Added custom string TIFF tags #3513
+  [radarhere]
+
+- Improve setup.py configuration #3395
+  [diorcety]
+
+- Read textual chunks located after IDAT chunks for PNG #3506
+  [radarhere]
+
+- Performance: Don't try to hash value if enum is empty #3503
+  [Glandos]
+
+- Added custom int and float TIFF tags #3350
+  [radarhere]
+
+- Fixes for issues reported by static code analysis #3393
+  [frenzymadness]
+
+- GIF: Wait until mode is normalized to copy im.info into encoderinfo #3187
+  [radarhere]
+
+- Docs: Add page of deprecations and removals #3486
+  [hugovk]
 
 - Travis CI: Upgrade PyPy from 5.8.0 to 6.0 #3488
   [hugovk]

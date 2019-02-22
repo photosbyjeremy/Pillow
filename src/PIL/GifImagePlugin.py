@@ -29,6 +29,8 @@ from ._binary import i8, i16le as i16, o8, o16le as o16
 
 import itertools
 
+# __version__ is deprecated and will be removed in a future version. Use
+# PIL.__version__ instead.
 __version__ = "0.9"
 
 
@@ -304,7 +306,8 @@ class GifImageFile(ImageFile.ImageFile):
 
     def _close__fp(self):
         try:
-            self.__fp.close()
+            if self.__fp != self.fp:
+                self.__fp.close()
         except AttributeError:
             pass
         finally:
@@ -393,6 +396,8 @@ def _normalize_palette(im, palette, info):
 
 def _write_single_frame(im, fp, palette):
     im_out = _normalize_mode(im, True)
+    for k, v in im_out.info.items():
+        im.encoderinfo.setdefault(k, v)
     im_out = _normalize_palette(im_out, palette, im.encoderinfo)
 
     for s in _get_global_header(im_out, im.encoderinfo):
@@ -413,8 +418,8 @@ def _write_single_frame(im, fp, palette):
 
 def _write_multiple_frames(im, fp, palette):
 
-    duration = im.encoderinfo.get("duration", None)
-    disposal = im.encoderinfo.get('disposal', None)
+    duration = im.encoderinfo.get("duration", im.info.get("duration"))
+    disposal = im.encoderinfo.get("disposal", im.info.get("disposal"))
 
     im_frames = []
     frame_count = 0
@@ -423,6 +428,9 @@ def _write_multiple_frames(im, fp, palette):
         for im_frame in ImageSequence.Iterator(imSequence):
             # a copy is required here since seek can still mutate the image
             im_frame = _normalize_mode(im_frame.copy())
+            if frame_count == 0:
+                for k, v in im_frame.info.items():
+                    im.encoderinfo.setdefault(k, v)
             im_frame = _normalize_palette(im_frame, palette, im.encoderinfo)
 
             encoderinfo = im.encoderinfo.copy()
@@ -481,12 +489,10 @@ def _save_all(im, fp, filename):
 
 
 def _save(im, fp, filename, save_all=False):
-    for k, v in im.info.items():
-        im.encoderinfo.setdefault(k, v)
     # header
-    try:
-        palette = im.encoderinfo["palette"]
-    except KeyError:
+    if "palette" in im.encoderinfo or "palette" in im.info:
+        palette = im.encoderinfo.get("palette", im.info.get("palette"))
+    else:
         palette = None
         im.encoderinfo["optimize"] = im.encoderinfo.get("optimize", True)
 
